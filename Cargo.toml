@@ -1,0 +1,11 @@
+[package]
+name = "clockwork"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alloy = { version = "0.1.1", features = ["full"] }
+dotenv = "0.15.0"
+eyre = "0.6.12"
+futures-util = "0.3.30"
+tokio = { version = "1.38.0", features = ["macros", "rt-multi-thread"] }
