@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use alloy::{
-    network::EthereumWallet, primitives::{address, utils::parse_ether, Uint}, providers::{Provider, ProviderBuilder, WsConnect}, rpc::types::{BlockNumberOrTag, Filter}, signers::local::PrivateKeySigner, sol
+    network::EthereumWallet, primitives::{utils::parse_units, Address, Uint}, providers::{Provider, ProviderBuilder, WsConnect}, rpc::types::{BlockNumberOrTag, Filter}, signers::local::PrivateKeySigner, sol
 };
 use eyre::Result;
 use futures_util::stream::StreamExt;
@@ -29,7 +31,7 @@ async fn main() -> Result<()> {
     let provider = ProviderBuilder::new().with_recommended_fillers().wallet(wallet).on_ws(ws).await?;
 
     // Create a filter to watch for any SharesCreated events.
-    let timefun_address = address!("428aeF7fB31E4E86162D62d4530a4dd7232D953D");
+    let timefun_address = Address::from_str(dotenv::var("TIMEFUN_ADDRESS")?.as_str())?;
     let filter = Filter::new()
         .address(timefun_address)
         // By specifying an `event` or `event_signature` we listen for a specific event of the
@@ -44,15 +46,27 @@ async fn main() -> Result<()> {
     println!("Listening for events...");
 
     while let Some(log) = stream.next().await {
-        println!("timefun event: {log:?}");
+        // println!("timefun event: {log:?}");
         let TimeBasedExperience::SharesCreated { creator, referrer } = log.log_decode()?.inner.data;
         println!("Creator: {creator}, Referrer: {referrer}");
 
-        println!("Buying shares...");
+        // Verify that the creator address has more than 0.0005 ETH.
+        let balance = provider.get_balance(creator).await?;
+        if balance < parse_units("0.0005", "ether").unwrap().into() {
+            println!("Creator has less than 0.0005 ETH, skipping");
+            continue;
+        }
+
         let timefun = TimeBasedExperience::new(timefun_address, provider.clone());
-        let tx = timefun.buyShares(creator, Uint::from(10)).value(parse_ether("0.008").unwrap());
+
+        println!("Buying minutes...");
+        let minutes = dotenv::var("NUM_MINUTES")?.parse::<u64>().expect("Invalid minutes");
+
+        let TimeBasedExperience::totalCostWithFeesReturn { _0: cost_of_minutes } = timefun.totalCostWithFees(creator, Uint::from(minutes), true).call().await.expect("Failed to estimate cost");
+
+        let tx = timefun.buyShares(creator, Uint::from(minutes)).value(cost_of_minutes);
         
-        let receipt = tx.send().await?.with_required_confirmations(1).with_timeout(Some(std::time::Duration::from_secs(10))).watch().await?;
+        let receipt = tx.send().await?.with_required_confirmations(1).with_timeout(Some(std::time::Duration::from_secs(10))).watch().await.expect("Failed to send transaction");
 
         println!("Transaction hash: {receipt}");
     }
