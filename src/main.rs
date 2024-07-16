@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
         
         let receipt = tx.send().await?.with_required_confirmations(1).with_timeout(Some(std::time::Duration::from_secs(10))).watch().await.expect("Failed to send transaction");
 
-        println!("Transaction hash: {receipt}");
+        println!("Transaction: https://basescan.org/tx/{receipt}");
     }
 
     Ok(())
